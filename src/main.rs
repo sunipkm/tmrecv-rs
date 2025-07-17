@@ -17,18 +17,19 @@ struct Args {
     #[arg(
         short,
         long,
-        default_value = "14389",
+        default_value = "14443",
         value_parser = clap::value_parser!(u16).range(1..=65535)
     )]
     /// Network port to host TCP server
     tcp_port: u16,
 
     /// EVTM address
-    #[arg(long, default_value = "224.255.0.1")]
+    #[arg(short, long, default_value = "224.255.0.1")]
     evtm_addr: String,
 
     /// EVTM port
     #[arg(
+        short('p'),
         long,
         default_value = "20000",
         value_parser = clap::value_parser!(u16).range(1..=65535)
@@ -36,7 +37,7 @@ struct Args {
     evtm_port: u16,
 
     /// Multicast interface
-    #[arg(long, default_value = "mcastaddr")]
+    #[arg(short, long, default_value = "mcastaddr")]
     multicast_interface: Option<String>,
 }
 
@@ -88,13 +89,8 @@ async fn main() {
         thread::sleep(std::time::Duration::from_secs(1));
     }
 
+    log::info!("[NET] Stopping all network listeners");
     tcp_hdl.abort();
     udp_hdl.abort();
-    log::info!("[NET] Stopping all network listeners");
-    if let Err(e) = tcp_hdl.await {
-        log::error!("[NET] TCP server task failed: {e}");
-    }
-    if let Err(e) = udp_hdl.await {
-        log::error!("[NET] UDP listener task failed: {e}");
-    }
+    log::info!("[NET] All network listeners stopped");
 }

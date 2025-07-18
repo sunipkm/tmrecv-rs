@@ -6,15 +6,15 @@ use std::sync::{
 use tokio::{io::AsyncWriteExt, sync::broadcast::Sender};
 
 pub async fn tcp_server(port: u16, running: Arc<AtomicBool>, sink: Sender<Vec<u8>>) {
-    log::info!("[NET] Starting TCP server on port {port}");
+    log::info!("[TCP] Starting TCP server on port {port}");
     let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{port}"))
         .await
-        .expect("[NET] Failed to bind TCP listener");
-    log::info!("[NET] TCP server listening on port {port}");
+        .expect("[TCP] Failed to bind TCP listener");
+    log::info!("[TCP] TCP server listening on port {port}");
     while running.load(Ordering::Relaxed) {
         match listener.accept().await {
             Ok((socket, addr)) => {
-                log::info!("[NET] Accepted connection from {addr}");
+                log::info!("[TCP] Accepted connection from {addr}");
                 let running = running.clone();
                 let sink = sink.clone();
                 tokio::spawn(async move {
@@ -22,11 +22,11 @@ pub async fn tcp_server(port: u16, running: Arc<AtomicBool>, sink: Sender<Vec<u8
                 });
             }
             Err(e) => {
-                log::error!("[NET] Failed to accept connection on server: {e}");
+                log::error!("[TCP] Failed to accept connection on server: {e}");
             }
         }
     }
-    log::info!("[NET] TCP server stopped");
+    log::info!("[TCP] TCP server stopped");
 }
 
 async fn handle_client_tcp(
@@ -35,7 +35,7 @@ async fn handle_client_tcp(
     running: Arc<AtomicBool>,
     sink: Sender<Vec<u8>>,
 ) {
-    log::info!("[NET] {addr}> Handling client.");
+    log::info!("[TCP] {addr}> Handling client.");
     let (_, mut writer) = socket.into_split();
     let mut source = sink.subscribe();
     let mut counter = 0;
@@ -45,13 +45,13 @@ async fn handle_client_tcp(
         match source.recv().await {
             Ok(data) => {
                 writer.write_all(&data).await.unwrap_or_else(|e| {
-                    log::error!("[NET] {addr}> Error writing to socket: {e}");
+                    log::error!("[TCP] {addr}> Error writing to socket: {e}");
                 });
                 let nnow = std::time::Instant::now();
                 let dur = nnow.duration_since(now).as_secs_f32();
                 if dur > 1.0 {
                     log::info!(
-                        "[NET] {addr}> Sending data rate: {} mbps",
+                        "[TCP] {addr}> Sending data rate: {} mbps",
                         (counter * 8) as f32 / 1024.0 / 1024.0 / dur
                     );
                     now = nnow;
@@ -60,7 +60,7 @@ async fn handle_client_tcp(
                 counter += data.len();
             }
             Err(e) => {
-                log::error!("[NET] {addr}> Error receiving data: {e}");
+                log::error!("[TCP] {addr}> Error receiving data: {e}");
             }
         }
     }

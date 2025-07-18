@@ -163,7 +163,6 @@ pub async fn udp_listener_multicast(
             .await
             .is_err()
         {
-            log::error!("[UDPM] Failed to receive data");
             continue;
         }
     }
@@ -212,13 +211,12 @@ async fn udp_receive_data(
                                 continue 'receive;
                             }
                         }
-                        Err(e) => {
-                            log::error!("[{kind}] Failed to receive data: {e}");
+                        Err(_) => {
                             Err(())?; // Exit on error
                         }
                     }
                 }
-                _ = tokio::time::sleep(Duration::from_secs(5)) => {
+                _ = tokio::time::sleep(Duration::from_millis(100)) => {
                     // Timeout, check if we need to send the buffer
                     if !buf.is_empty() {
                         if sink.receiver_count() > 0 {

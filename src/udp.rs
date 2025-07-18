@@ -29,9 +29,9 @@ pub async fn udp_listener_unicast(
     running: Arc<AtomicBool>,
 ) {
     let sockaddr = {
-        if let Ok(addr) = address.to_socket_addrs() {
+        if let Ok(addr) = (address.as_str(), port).to_socket_addrs() {
             if addr.len() != 1 {
-                panic!("[UDPU] Invalid number of listen addresses: {address}");
+                panic!("[UDPU] Invalid number of listen addresses on {address}: {}", addr.len());
             }
             let addr = addr.into_iter().collect::<Vec<_>>();
             addr[0]
@@ -40,7 +40,7 @@ pub async fn udp_listener_unicast(
         }
     };
     while running.load(Ordering::Relaxed) {
-        log::info!("[UDPU] Listening for UDP packets from {address}:{port}");
+        log::trace!("[UDPU] Listening for UDP packets from {address}:{port}");
         let socket = match UdpSocket::bind(("0.0.0.0", port)).await {
             Ok(sock) => sock,
             Err(e) => {
@@ -60,11 +60,10 @@ pub async fn udp_listener_unicast(
             .await
             .is_err()
         {
-            time::sleep(Duration::from_secs(1)).await;
             continue;
         }
     }
-    log::info!("[UDPU] Stopping UDP listener");
+    log::trace!("[UDPU] Stopping UDP listener");
 }
 
 /// Multicast UDP listener
@@ -90,14 +89,15 @@ pub async fn udp_listener_multicast(
     running: Arc<AtomicBool>,
 ) {
     let iface = {
-        if let Ok(addr) = interface.to_socket_addrs() {
-            if addr.len() != 1 {
-                panic!("[UDPM] Invalid number of listen addresses: {interface}");
+        match (interface.as_str(), port).to_socket_addrs() {
+            Ok(addr) => {
+                if addr.len() != 1 {
+                    panic!("[UDPM] Invalid number of listen addresses on {interface}: {}", addr.len());
+                }
+                let addr = addr.into_iter().collect::<Vec<_>>();
+                addr[0]
             }
-            let addr = addr.into_iter().collect::<Vec<_>>();
-            addr[0]
-        } else {
-            panic!("[UDPM] Invalid listen address: {interface}");
+            Err(e) => panic!("[UDPM] Invalid listen address: {interface}: {e}"),
         }
     };
 
@@ -117,7 +117,7 @@ pub async fn udp_listener_multicast(
 
     let address = address.as_str();
     while running.load(Ordering::Relaxed) {
-        log::info!(
+        log::trace!(
             "[UDPM] Listening for UDP packets from {address}:{port} on interface {interface}",
         );
         let socket = match UdpSocket::bind(("0.0.0.0", port)).await {
@@ -148,7 +148,7 @@ pub async fn udp_listener_multicast(
             time::sleep(Duration::from_secs(1)).await;
             continue;
         };
-        log::info!("[UDPM] Successfully joined multicast group");
+        log::trace!("[UDPM] Successfully joined multicast group");
 
         let socket = match UdpSocket::from_std(socket.into()) {
             Ok(sock) => sock,
@@ -164,11 +164,10 @@ pub async fn udp_listener_multicast(
             .is_err()
         {
             log::error!("[UDPM] Failed to receive data");
-            time::sleep(Duration::from_secs(1)).await;
             continue;
         }
     }
-    log::info!("[UDPM] Stopping UDP listener");
+    log::trace!("[UDPM] Stopping UDP listener");
 }
 
 async fn udp_receive_data(
@@ -219,7 +218,7 @@ async fn udp_receive_data(
                         }
                     }
                 }
-                _ = tokio::time::sleep(Duration::from_millis(100)) => {
+                _ = tokio::time::sleep(Duration::from_secs(5)) => {
                     // Timeout, check if we need to send the buffer
                     if !buf.is_empty() {
                         if sink.receiver_count() > 0 {
@@ -228,11 +227,28 @@ async fn udp_receive_data(
                             }
                         }
                         buf.clear();
-                        continue 'receive;
+                    } else {
+                        log::trace!("[{kind}] No data received, continuing to listen");
+                        Err(())?; // Exit if no data received
                     }
+                    continue 'receive;
                 }
             }
         }
     }
     Ok(())
+}
+
+mod test {
+    
+    #[test]
+    fn test_sockaddr() {
+        use std::net::ToSocketAddrs;
+        let addr = ("192.168.0.6", 8080).to_socket_addrs();
+        assert!(addr.is_ok());
+        let addr = addr.unwrap().collect::<Vec<_>>();
+        assert_eq!(addr.len(), 1);
+        let addr = addr[0];
+        assert_eq!(addr.ip().to_string(), "192.168.0.6");
+    }
 }

@@ -43,7 +43,7 @@ struct Args {
 
 #[tokio::main]
 async fn main() {
-    env_logger::init();
+    env_logger::builder().format_target(false).init();
     let args = Args::parse();
     log::info!("[MAIN] Starting tmrecv-rs with args: {args:?}");
     let running = Arc::new(AtomicBool::new(true));
@@ -60,7 +60,7 @@ async fn main() {
 
     let udp_hdl = {
         if let Some(interface) = args.multicast_interface {
-            log::info!("[MAIN] Starting UDP listener for multicast on {interface}");
+            log::trace!("[MAIN] Starting UDP listener for multicast on {interface}");
             tokio::spawn(udp_listener_multicast(
                 args.evtm_addr.clone(),
                 args.evtm_port,
@@ -69,7 +69,7 @@ async fn main() {
                 running.clone(),
             ))
         } else {
-            log::info!("[MAIN] Starting UDP listener for unicast");
+            log::trace!("[MAIN] Starting UDP listener for unicast");
             tokio::spawn(udp_listener_unicast(
                 args.evtm_addr.clone(),
                 args.evtm_port,
@@ -80,7 +80,7 @@ async fn main() {
     };
 
     let tcp_hdl = {
-        log::info!("[MAIN] Starting TCP server on port {}", args.tcp_port);
+        log::trace!("[MAIN] Starting TCP server on port {}", args.tcp_port);
         let running = running.clone();
         tokio::spawn(tcp_server(args.tcp_port, running, sink))
     };
@@ -89,8 +89,8 @@ async fn main() {
         thread::sleep(std::time::Duration::from_secs(1));
     }
 
-    log::info!("[MAIN] Stopping all network listeners");
+    log::trace!("[MAIN] Stopping all network listeners");
     tcp_hdl.abort();
     udp_hdl.abort();
-    log::info!("[MAIN] All network listeners stopped");
+    log::trace!("[MAIN] All network listeners stopped");
 }

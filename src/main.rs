@@ -1,3 +1,4 @@
+use std::net::{SocketAddr, ToSocketAddrs};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
@@ -45,7 +46,50 @@ struct Args {
 async fn main() {
     env_logger::builder().format_target(false).init();
     let args = Args::parse();
+
     log::info!("[MAIN] Starting tmrecv-rs with args: {args:?}");
+    let sockaddr = {
+        if let Ok(addr) = (args.evtm_addr.as_str(), args.evtm_port).to_socket_addrs() {
+            if addr.len() != 1 {
+                panic!(
+                    "[MAIN] Invalid number of listen addresses on {}: {}",
+                    args.evtm_addr,
+                    addr.len()
+                );
+            }
+            let addr = addr.into_iter().collect::<Vec<_>>();
+            let addr = addr[0];
+
+            match addr {
+                SocketAddr::V4(addr) => addr,
+                _ => panic!("[MAIN] Only IPv4 unicast/multicast is supported"),
+            }
+        } else {
+            panic!("[MAIN] Invalid listen address: {}", args.evtm_addr);
+        }
+    };
+
+    let iface = args.multicast_interface.as_ref().map(|s| {
+        match (s.as_str(), args.evtm_port).to_socket_addrs() {
+            Ok(addr) => {
+                if addr.len() != 1 {
+                    panic!(
+                        "[MAIN] Invalid number of listen addresses on {s}: {}",
+                        addr.len()
+                    );
+                }
+                let addr = addr.into_iter().collect::<Vec<_>>();
+                let addr = addr[0];
+
+                match addr {
+                    SocketAddr::V4(addr) => addr,
+                    _ => panic!("[MAIN] Only IPv4 multicast is supported"),
+                }
+            }
+            Err(e) => panic!("[MAIN] Invalid listen address: {s}: {e}"),
+        }
+    });
+
     let running = Arc::new(AtomicBool::new(true));
     let (sink, _) = tokio::sync::broadcast::channel(100);
     let _ctrlc = {
@@ -59,11 +103,10 @@ async fn main() {
     };
 
     let udp_hdl = {
-        if let Some(interface) = args.multicast_interface {
+        if let Some(interface) = iface {
             log::trace!("[MAIN] Starting UDP listener for multicast on {interface}");
             tokio::spawn(udp_listener_multicast(
-                args.evtm_addr.clone(),
-                args.evtm_port,
+                sockaddr,
                 interface,
                 sink.clone(),
                 running.clone(),
@@ -71,8 +114,7 @@ async fn main() {
         } else {
             log::trace!("[MAIN] Starting UDP listener for unicast");
             tokio::spawn(udp_listener_unicast(
-                args.evtm_addr.clone(),
-                args.evtm_port,
+                sockaddr,
                 sink.clone(),
                 running.clone(),
             ))

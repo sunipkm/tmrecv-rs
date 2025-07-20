@@ -1,6 +1,5 @@
 use std::{
-    net::{Ipv4Addr, SocketAddr, ToSocketAddrs},
-    str::FromStr,
+    net::SocketAddrV4,
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
@@ -10,38 +9,26 @@ use std::{
 use tokio::{net::UdpSocket, sync::broadcast::Sender, time};
 
 /// Unicast UDP listener
-/// 
+///
 /// This function listens for UDP packets on a specified address and port.
-/// 
+///
 /// # Arguments
 /// * `address` - The address to listen on.
 /// * `port` - The port to listen on.
 /// * `sink` - The broadcast channel to send received data to.
 /// * `running` - A flag to indicate if the listener should keep running.
-/// 
+///
 /// # Returns
 /// This function does not return a value. It runs indefinitely until `running` is set to false.
-/// 
+///
 pub async fn udp_listener_unicast(
-    address: String,
-    port: u16,
+    address: SocketAddrV4,
     sink: Sender<Vec<u8>>,
     running: Arc<AtomicBool>,
 ) {
-    let sockaddr = {
-        if let Ok(addr) = (address.as_str(), port).to_socket_addrs() {
-            if addr.len() != 1 {
-                panic!("[UDPU] Invalid number of listen addresses on {address}: {}", addr.len());
-            }
-            let addr = addr.into_iter().collect::<Vec<_>>();
-            addr[0]
-        } else {
-            panic!("[UDPU] Invalid listen address: {address}");
-        }
-    };
     while running.load(Ordering::Relaxed) {
-        log::trace!("[UDPU] Listening for UDP packets from {address}:{port}");
-        let socket = match UdpSocket::bind(("0.0.0.0", port)).await {
+        log::trace!("[UDPU] Listening for UDP packets from {address}");
+        let socket = match UdpSocket::bind(("0.0.0.0", address.port())).await {
             Ok(sock) => sock,
             Err(e) => {
                 log::error!("[UDPU] Failed to bind UDP socket: {e}");
@@ -49,7 +36,7 @@ pub async fn udp_listener_unicast(
                 continue;
             }
         };
-        if let Err(e) = socket.connect(sockaddr).await {
+        if let Err(e) = socket.connect(address).await {
             log::error!("[UDPU] Failed to connect UDP socket to {address}: {e}");
             time::sleep(Duration::from_secs(1)).await;
             continue;
@@ -74,53 +61,24 @@ pub async fn udp_listener_unicast(
 /// * `interface` - The network interface to bind to.
 /// * `sink` - The broadcast channel to send received data to.
 /// * `running` - A flag to indicate if the listener should keep running.
-/// 
+///
 /// # Returns
 /// This function does not return a value. It runs indefinitely until `running` is set to false.
 ///
 /// # Panics
 /// This function will panic if the addreses are invalid, or IPv4 is not used.
-/// 
+///
 pub async fn udp_listener_multicast(
-    address: String,
-    port: u16,
-    interface: String,
+    address: SocketAddrV4,
+    interface: SocketAddrV4,
     sink: Sender<Vec<u8>>,
     running: Arc<AtomicBool>,
 ) {
-    let iface = {
-        match (interface.as_str(), port).to_socket_addrs() {
-            Ok(addr) => {
-                if addr.len() != 1 {
-                    panic!("[UDPM] Invalid number of listen addresses on {interface}: {}", addr.len());
-                }
-                let addr = addr.into_iter().collect::<Vec<_>>();
-                addr[0]
-            }
-            Err(e) => panic!("[UDPM] Invalid listen address: {interface}: {e}"),
-        }
-    };
+    let iface = interface.ip();
 
-    let iface = match iface {
-        SocketAddr::V4(addr) => addr,
-        _ => panic!("[UDPM] Only IPv4 multicast is supported"),
-    };
-
-    let addr = match Ipv4Addr::from_str(&address) {
-        Ok(addr) => addr,
-        Err(e) => {
-            panic!("[UDPM] Invalid multicast address {address}: {e}");
-        }
-    };
-
-    let iface = iface.ip();
-
-    let address = address.as_str();
     while running.load(Ordering::Relaxed) {
-        log::trace!(
-            "[UDPM] Listening for UDP packets from {address}:{port} on interface {interface}",
-        );
-        let socket = match UdpSocket::bind(("0.0.0.0", port)).await {
+        log::trace!("[UDPM] Listening for UDP packets from {address} on interface {interface}",);
+        let socket = match UdpSocket::bind(("0.0.0.0", address.port())).await {
             Ok(sock) => sock,
             Err(e) => {
                 log::error!("[UDPM] Failed to bind UDP socket: {e}");
@@ -143,7 +101,7 @@ pub async fn udp_listener_multicast(
             continue;
         }
 
-        if let Err(e) = socket.join_multicast_v4(&addr, iface) {
+        if let Err(e) = socket.join_multicast_v4(address.ip(), iface) {
             log::error!("[UDPM] Failed to join multicast group: {e}");
             time::sleep(Duration::from_secs(1)).await;
             continue;
@@ -238,7 +196,7 @@ async fn udp_receive_data(
 }
 
 mod test {
-    
+
     #[test]
     fn test_sockaddr() {
         use std::net::ToSocketAddrs;

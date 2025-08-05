@@ -158,6 +158,13 @@ async fn udp_receive_data(
                         log::trace!("[{kind}] Received {size} bytes.");
                         if buf.len() + size < buf.capacity() {
                             buf.extend_from_slice(&sbuf[..size]);
+                        } else {
+                            if sink.receiver_count() > 0 {
+                                if let Err(e) = sink.send(Arc::new(buf.clone())) {
+                                    log::error!("[{kind}] Failed to send data to sink: {e}");
+                                }
+                            }
+                            buf.clear();
                         }
                         if let Some(pos) = buf
                             .windows(4)

@@ -156,18 +156,24 @@ async fn udp_receive_data(
                     Ok((size, _)) => {
                         datarate.update(size);
                         log::trace!("[{kind}] Received {size} bytes.");
-                        if size > 8 {
-                            let data = sbuf[0..8].to_vec();
-                            let presync = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
-                            let version = u16::from_le_bytes([data[4], data[5]]);
-                            let pkt_type = u16::from_le_bytes([data[6], data[7]]);
-                            log::info!("[{kind}] Received data {size} bytes: presync: {presync:#010x}, version: {version}, pkt_type: {pkt_type}");
-                        }
                         if buf.len() + size < buf.capacity() {
                             buf.extend_from_slice(&sbuf[..size]);
                         }
-                        if let Some(pos) = buf.windows(4).position(|window| window == 0xBAADDAAD_u32.to_le_bytes()) {
+                        if let Some(pos) = buf
+                            .windows(4)
+                            .position(|window| window == 0xBAADDAAD_u32.to_le_bytes())
+                        {
                             log::info!("[{kind}] Found presync word in buffer: {pos}");
+                            if buf.len() > pos + 8 {
+                                let data = sbuf[pos..pos + 8].to_vec();
+                                let presync =
+                                    u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
+                                let version = u16::from_le_bytes([data[4], data[5]]);
+                                let pkt_type = u16::from_le_bytes([data[6], data[7]]);
+                                log::info!(
+                                    "[{kind}] Received data {size} bytes: presync: {presync:#010x}, version: {version}, pkt_type: {pkt_type}"
+                                );
+                            }
                         }
                         if start.elapsed() >= Duration::from_millis(100) {
                             if sink.receiver_count() > 0 {

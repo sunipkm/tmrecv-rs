@@ -1,15 +1,20 @@
 use std::net::{SocketAddr, ToSocketAddrs};
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 
+mod stor;
 mod tcp;
 mod udp;
+mod utils;
 
 use tcp::tcp_server;
 use udp::{udp_listener_multicast, udp_listener_unicast};
 
 use clap::Parser;
+
+use crate::stor::create_store;
 
 /// Program to forward serial port over TCP
 #[derive(Parser, Debug)]
@@ -40,14 +45,18 @@ struct Args {
     /// Multicast interface
     #[arg(short, long, default_value = "mcastaddr")]
     multicast_interface: Option<String>,
+
+    /// Packet storage path
+    #[arg(short, long, default_value = "")]
+    path: String,
 }
 
 #[tokio::main]
 async fn main() {
     env_logger::builder().format_target(false).init();
     let args = Args::parse();
-
     log::info!("[MAIN] Starting tmrecv-rs with args: {args:?}");
+
     let sockaddr = {
         if let Ok(addr) = (args.evtm_addr.as_str(), args.evtm_port).to_socket_addrs() {
             if addr.len() != 1 {
@@ -92,6 +101,22 @@ async fn main() {
 
     let running = Arc::new(AtomicBool::new(true));
     let (sink, _) = tokio::sync::broadcast::channel(100);
+
+    // Data storage
+    let stor_hdl = {
+        let path = args.path.trim();
+        if path.is_empty() {
+            None
+        } else {
+            let path = PathBuf::from(path);
+            log::trace!("[MAIN] Starting data storage at {path:?}");
+            Some(
+                create_store(path, running.clone(), sink.subscribe())
+                    .expect("[MAIN] Failed to create data store"),
+            )
+        }
+    };
+    // SIGINT
     let _ctrlc = {
         let running = running.clone();
         tokio::spawn(async move {
@@ -101,7 +126,7 @@ async fn main() {
             running.store(false, Ordering::Relaxed);
         })
     };
-
+    // UDP task
     let udp_hdl = {
         if let Some(interface) = iface {
             log::trace!("[MAIN] Starting UDP listener for multicast on {interface}");
@@ -120,7 +145,7 @@ async fn main() {
             ))
         }
     };
-
+    // TCP task
     let tcp_hdl = {
         log::trace!("[MAIN] Starting TCP server on port {}", args.tcp_port);
         let running = running.clone();
@@ -135,4 +160,11 @@ async fn main() {
     tcp_hdl.abort();
     udp_hdl.abort();
     log::trace!("[MAIN] All network listeners stopped");
+    if let Some(stor_task) = stor_hdl {
+        if let Err(e) = stor_task.await {
+            log::trace!("[MAIN] Error with datastore task: {e}");
+        } else {
+            log::trace!("[MAIN] Datastore task completed successfully.");
+        }
+    }
 }

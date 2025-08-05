@@ -1,10 +1,12 @@
 [package]
 name = "tmrecv-rs"
-version = "0.1.0"
+version = "0.0.2"
 edition = "2024"
 
 [dependencies]
+chrono = {version = "0.4", default-features = false, features = ["clock", "now"]}
 clap = { version = "4.5", features = ["derive"] }
+datastor = { git = "https://github.com/sunipkm/datastor.git" }
 env_logger = { version = "0.11 " }
 futures-util = { version = "0.3", features = ["sink"] }
 log = { version = "0.4" }

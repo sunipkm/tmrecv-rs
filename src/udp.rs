@@ -4,9 +4,11 @@ use std::{
         Arc,
         atomic::{AtomicBool, Ordering},
     },
-    time::{Duration, Instant},
+    time::Duration,
 };
 use tokio::{net::UdpSocket, sync::broadcast::Sender, time};
+
+use crate::utils::DataRateCounter;
 
 /// Unicast UDP listener
 ///
@@ -23,7 +25,7 @@ use tokio::{net::UdpSocket, sync::broadcast::Sender, time};
 ///
 pub async fn udp_listener_unicast(
     address: SocketAddrV4,
-    sink: Sender<Vec<u8>>,
+    sink: Sender<Arc<Vec<u8>>>,
     running: Arc<AtomicBool>,
 ) {
     while running.load(Ordering::Relaxed) {
@@ -71,7 +73,7 @@ pub async fn udp_listener_unicast(
 pub async fn udp_listener_multicast(
     address: SocketAddrV4,
     interface: SocketAddrV4,
-    sink: Sender<Vec<u8>>,
+    sink: Sender<Arc<Vec<u8>>>,
     running: Arc<AtomicBool>,
 ) {
     let iface = interface.ip();
@@ -130,55 +132,51 @@ pub async fn udp_listener_multicast(
 async fn udp_receive_data(
     kind: &str,
     socket: &UdpSocket,
-    sink: &Sender<Vec<u8>>,
+    sink: &Sender<Arc<Vec<u8>>>,
     running: Arc<AtomicBool>,
 ) -> Result<(), ()> {
     // Receive data
     let mut buf = Vec::with_capacity(65536); // 64KB buffer
-    let mut nstart = Instant::now();
-    let mut count = 0;
+    let mut datarate = DataRateCounter::default();
     'receive: while running.load(Ordering::Relaxed) {
-        let start = Instant::now();
-        let dur = start.duration_since(nstart).as_secs_f32();
-        if dur > 1.0 {
-            log::info!(
-                "[{kind}] Receving data rate: {} mbps",
-                (count * 8) as f32 / 1024.0 / 1024.0 / dur
-            );
-            nstart = start;
-            count = 0;
-        }
+        let start = match datarate.reset() {
+            Ok((start, rate, unit)) => {
+                log::info!("[{kind}] Receving data rate: {rate:.3} {unit}");
+                start
+            }
+            Err(start) => start,
+        };
         // Inner loop to fill the buffer, and send it when full or timeout
         while running.load(Ordering::Relaxed) {
             let mut sbuf = [0u8; 16384]; // 16KB buffer for receiving
-            tokio::select! {
-                res = socket.recv_from(&mut sbuf) => {
-                    match res {
-                        Ok((size, _src)) => {
-                            count += size;
-                            buf.extend_from_slice(&sbuf[..size]);
-                            if buf.len() == buf.capacity()
-                                || start.elapsed() >= Duration::from_millis(100)
-                            {
-                                if sink.receiver_count() > 0 {
-                                    if let Err(e) = sink.send(buf.clone()) {
-                                        log::error!("[{kind}] Failed to send data to sink: {e}");
-                                    }
+            match tokio::time::timeout(Duration::from_millis(100), socket.recv_from(&mut sbuf))
+                .await
+            {
+                Ok(res) => match res {
+                    Ok((size, _)) => {
+                        datarate.update(size);
+                        buf.extend_from_slice(&sbuf[..size]);
+                        if buf.len() == buf.capacity()
+                            || start.elapsed() >= Duration::from_millis(100)
+                        {
+                            if sink.receiver_count() > 0 {
+                                if let Err(e) = sink.send(Arc::new(buf.clone())) {
+                                    log::error!("[{kind}] Failed to send data to sink: {e}");
                                 }
-                                buf.clear();
-                                continue 'receive;
                             }
-                        }
-                        Err(_) => {
-                            Err(())?; // Exit on error
+                            buf.clear();
+                            continue 'receive;
                         }
                     }
-                }
-                _ = tokio::time::sleep(Duration::from_millis(100)) => {
+                    Err(_) => {
+                        Err(())?; // Exit on error
+                    }
+                },
+                Err(_) => {
                     // Timeout, check if we need to send the buffer
                     if !buf.is_empty() {
                         if sink.receiver_count() > 0 {
-                            if let Err(e) = sink.send(buf.clone()) {
+                            if let Err(e) = sink.send(Arc::new(buf.clone())) {
                                 log::error!("[{kind}] Failed to send data to sink: {e}");
                             }
                         }

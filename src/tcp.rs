@@ -5,7 +5,9 @@ use std::sync::{
 
 use tokio::{io::AsyncWriteExt, sync::broadcast::Sender};
 
-pub async fn tcp_server(port: u16, running: Arc<AtomicBool>, sink: Sender<Vec<u8>>) {
+use crate::utils::DataRateCounter;
+
+pub async fn tcp_server(port: u16, running: Arc<AtomicBool>, sink: Sender<Arc<Vec<u8>>>) {
     log::trace!("[TCP] Starting TCP server on port {port}");
     let listener = tokio::net::TcpListener::bind(format!("0.0.0.0:{port}"))
         .await
@@ -33,14 +35,12 @@ async fn handle_client_tcp(
     socket: tokio::net::TcpStream,
     addr: std::net::SocketAddr,
     running: Arc<AtomicBool>,
-    sink: Sender<Vec<u8>>,
+    sink: Sender<Arc<Vec<u8>>>,
 ) {
     log::trace!("[TCP] {addr}> Handling client.");
     let (_, mut writer) = socket.into_split();
     let mut source = sink.subscribe();
-    let mut counter = 0;
-    let mut now = std::time::Instant::now();
-
+    let mut datarate = DataRateCounter::default();
     while running.load(Ordering::Relaxed) {
         match source.recv().await {
             Ok(data) => {
@@ -48,17 +48,12 @@ async fn handle_client_tcp(
                     log::error!("[TCP] {addr}> Error writing to socket: {e}");
                     break;
                 }
-                let nnow = std::time::Instant::now();
-                let dur = nnow.duration_since(now).as_secs_f32();
-                if dur > 1.0 {
+                if let Ok((_, rate, unit)) = datarate.reset() {
                     log::info!(
-                        "[TCP] {addr}> Sending data rate: {} mbps",
-                        (counter * 8) as f32 / 1024.0 / 1024.0 / dur
+                        "[TCP] {addr}> Sending data rate: {rate:.3} {unit}"
                     );
-                    now = nnow;
-                    counter = 0;
                 }
-                counter += data.len();
+                datarate.update(data.len());
             }
             Err(e) => {
                 log::error!("[TCP] {addr}> Error receiving data: {e}");

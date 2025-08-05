@@ -32,7 +32,7 @@ async fn store_task(
     mut source: Receiver<Arc<Vec<u8>>>,
     mut stor: UtcHourly<Binary>,
 ) {
-    let mut frame = Vec::with_capacity(2048);
+    let mut frame = Vec::with_capacity(65536); // 64KB buffer
     while running.load(Ordering::SeqCst) {
         let data = match timeout(Duration::from_millis(100), source.recv()).await {
             Ok(Ok(data)) => data,
@@ -70,7 +70,7 @@ async fn store_task(
             if frame.len() > 8 {
                 if let Ok(pkt_type_bytes) = frame[4..6].try_into() {
                     let pkt_type = u16::from_le_bytes(pkt_type_bytes);
-                    log::trace!("[TMSTOR] Received packet type: {pkt_type}, size: {}", frame.len());
+                    log::info!("[TMSTOR] Received packet type: {pkt_type}, size: {}", frame.len());
                 }
             }
             // Frame now contains an entire packet

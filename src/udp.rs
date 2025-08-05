@@ -155,27 +155,26 @@ async fn udp_receive_data(
                 Ok(res) => match res {
                     Ok((size, _)) => {
                         datarate.update(size);
-                        buf.extend_from_slice(&sbuf[..size]);
                         log::trace!("[{kind}] Received {size} bytes.");
-                        // let's print some bytes
-                        if buf.len() > 8 {
-                            let data = buf[0..8].to_vec();
+                        if size > 8 {
+                            let data = sbuf[0..8].to_vec();
                             let presync = u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
                             let version = u16::from_le_bytes([data[4], data[5]]);
                             let pkt_type = u16::from_le_bytes([data[6], data[7]]);
-                            log::info!("[{kind}] Received data: presync: {presync:#010x}, version: {version}, pkt_type: {pkt_type}");
+                            log::info!("[{kind}] Received data {size} bytes: presync: {presync:#010x}, version: {version}, pkt_type: {pkt_type}");
                         }
-                        if buf.len() == buf.capacity()
-                            || start.elapsed() >= Duration::from_millis(100)
-                        {
+                        if buf.len() + size > buf.capacity() || start.elapsed() >= Duration::from_millis(100) {
                             if sink.receiver_count() > 0 {
                                 if let Err(e) = sink.send(Arc::new(buf.clone())) {
                                     log::error!("[{kind}] Failed to send data to sink: {e}");
                                 }
                             }
                             buf.clear();
-                            continue 'receive;
+                            if let Ok((_, rate, unit)) = datarate.reset() {
+                                log::info!("[{kind}] Data rate: {rate:.3} {unit}");
+                            }
                         }
+                        buf.extend_from_slice(&sbuf[..size]);
                     }
                     Err(_) => {
                         Err(())?; // Exit on error

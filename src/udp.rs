@@ -170,6 +170,10 @@ async fn udp_receive_data(
                                 }
                             }
                             buf.clear();
+                            log::info!("[{kind}] Buffer sent, size: {}", buf.len());
+                            if let Some(pos) = buf.windows(4).position(|window| window == 0xBAADDAAD_u32.to_le_bytes()) {
+                                log::info!("[{kind}] Found presync word in buffer: {}", pos);
+                            }
                             if let Ok((_, rate, unit)) = datarate.reset() {
                                 log::info!("[{kind}] Data rate: {rate:.3} {unit}");
                             }

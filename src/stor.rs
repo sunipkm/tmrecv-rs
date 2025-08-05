@@ -23,7 +23,7 @@ pub fn create_store(
     running: Arc<AtomicBool>,
     source: Receiver<Arc<Vec<u8>>>,
 ) -> Result<JoinHandle<()>, std::io::Error> {
-    let stor = UtcHourly::<Binary>::new(path, true, "PICTURE-D TMRECV")?;
+    let stor = UtcHourly::<Binary>::new(path, false, "PICTURE-D TMRECV")?;
     Ok(tokio::spawn(store_task(running, source, stor)))
 }
 

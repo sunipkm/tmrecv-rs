@@ -173,6 +173,11 @@ async fn udp_receive_data(
                                 log::info!(
                                     "[{kind}] Received data {size} bytes: presync: {presync:#010x}, version: {version}, pkt_type: {pkt_type}"
                                 );
+                            } else {
+                                log::warn!(
+                                    "[{kind}] Buffer too small to extract presync data: {} bytes",
+                                    buf.len()
+                                );
                             }
                         }
                         if start.elapsed() >= Duration::from_millis(100) {

@@ -163,22 +163,21 @@ async fn udp_receive_data(
                             let pkt_type = u16::from_le_bytes([data[6], data[7]]);
                             log::info!("[{kind}] Received data {size} bytes: presync: {presync:#010x}, version: {version}, pkt_type: {pkt_type}");
                         }
-                        if buf.len() + size > buf.capacity() || start.elapsed() >= Duration::from_millis(100) {
+                        if buf.len() + size < buf.capacity() {
+                            buf.extend_from_slice(&sbuf[..size]);
+                        }
+                        if let Some(pos) = buf.windows(4).position(|window| window == 0xBAADDAAD_u32.to_le_bytes()) {
+                            log::info!("[{kind}] Found presync word in buffer: {pos}");
+                        }
+                        if start.elapsed() >= Duration::from_millis(100) {
                             if sink.receiver_count() > 0 {
                                 if let Err(e) = sink.send(Arc::new(buf.clone())) {
                                     log::error!("[{kind}] Failed to send data to sink: {e}");
                                 }
                             }
                             buf.clear();
-                            log::info!("[{kind}] Buffer sent, size: {}", buf.len());
-                            if let Some(pos) = buf.windows(4).position(|window| window == 0xBAADDAAD_u32.to_le_bytes()) {
-                                log::info!("[{kind}] Found presync word in buffer: {}", pos);
-                            }
-                            if let Ok((_, rate, unit)) = datarate.reset() {
-                                log::info!("[{kind}] Data rate: {rate:.3} {unit}");
-                            }
+                            continue 'receive;
                         }
-                        buf.extend_from_slice(&sbuf[..size]);
                     }
                     Err(_) => {
                         Err(())?; // Exit on error

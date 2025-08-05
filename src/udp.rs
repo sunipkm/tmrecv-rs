@@ -183,7 +183,7 @@ async fn udp_receive_data(
                                     u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
                                 let version = u16::from_le_bytes([data[4], data[5]]);
                                 let pkt_type = u16::from_le_bytes([data[6], data[7]]);
-                                log::info!(
+                                log::debug!(
                                     "[{kind}] Buffer size {} bytes: presync: {presync:#010x}, version: {version}, pkt_type: {pkt_type}",
                                     buf.len()
                                 );

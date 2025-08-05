@@ -156,10 +156,8 @@ async fn udp_receive_data(
                     Ok((size, _)) => {
                         datarate.update(size);
                         log::trace!("[{kind}] Received {size} bytes.");
-                        if buf.len() + size < buf.capacity() {
-                            buf.extend_from_slice(&sbuf[..size]);
-                        } else {
-                            if sink.receiver_count() > 0 {
+                        if buf.len() + size > buf.capacity() || start.elapsed() >= Duration::from_millis(100) {
+                            if !buf.is_empty() && sink.receiver_count() > 0 {
                                 if let Err(e) = sink.send(Arc::new(buf.clone())) {
                                     log::error!("[{kind}] Failed to send data to sink: {e}");
                                 }
@@ -167,6 +165,7 @@ async fn udp_receive_data(
                             buf.clear();
                             continue 'receive;
                         }
+                        buf.extend_from_slice(&sbuf[..size]);
                         if let Some(pos) = buf
                             .windows(4)
                             .position(|window| window == 0xBAADDAAD_u32.to_le_bytes())
@@ -187,15 +186,6 @@ async fn udp_receive_data(
                                     buf.len()
                                 );
                             }
-                        }
-                        if start.elapsed() >= Duration::from_millis(100) {
-                            if sink.receiver_count() > 0 {
-                                if let Err(e) = sink.send(Arc::new(buf.clone())) {
-                                    log::error!("[{kind}] Failed to send data to sink: {e}");
-                                }
-                            }
-                            buf.clear();
-                            continue 'receive;
                         }
                     }
                     Err(_) => {

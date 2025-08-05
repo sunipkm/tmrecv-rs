@@ -47,6 +47,7 @@ async fn store_task(
             }
             Err(_) => continue,
         };
+        log::info!("[TMSTOR] Received {} bytes", data.len());
         if data.len() < 4 {
             frame.extend_from_slice(&data);
             continue;

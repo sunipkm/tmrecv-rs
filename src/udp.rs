@@ -171,7 +171,6 @@ async fn udp_receive_data(
                             .windows(4)
                             .position(|window| window == 0xBAADDAAD_u32.to_le_bytes())
                         {
-                            log::info!("[{kind}] Found presync word in buffer: {pos}");
                             if buf.len() > pos + 8 {
                                 let data = buf[pos..pos + 8].to_vec();
                                 let presync =

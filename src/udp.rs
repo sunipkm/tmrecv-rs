@@ -173,7 +173,7 @@ async fn udp_receive_data(
                         {
                             log::info!("[{kind}] Found presync word in buffer: {pos}");
                             if buf.len() > pos + 8 {
-                                let data = sbuf[pos..pos + 8].to_vec();
+                                let data = buf[pos..pos + 8].to_vec();
                                 let presync =
                                     u32::from_le_bytes([data[0], data[1], data[2], data[3]]);
                                 let version = u16::from_le_bytes([data[4], data[5]]);

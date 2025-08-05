@@ -15,7 +15,7 @@ use tokio::{
     time::timeout,
 };
 
-const PICC_TLM_PRESYNC: [u8; 4] = 0x12345678_u32.to_le_bytes();
+const PICC_TLM_PRESYNC: [u8; 4] = 0xBAADDAAD_u32.to_le_bytes();
 const PICC_TLM_POSTSYNC: [u8; 4] = 0xDEADBEEF_u32.to_le_bytes();
 
 pub fn create_store(
@@ -66,6 +66,13 @@ async fn store_task(
             .position(|data| data == PICC_TLM_POSTSYNC)
         {
             let remaining = frame.split_off(loc);
+            // Now we have a complete frame
+            if frame.len() > 8 {
+                if let Ok(pkt_type_bytes) = frame[4..6].try_into() {
+                    let pkt_type = u16::from_le_bytes(pkt_type_bytes);
+                    log::trace!("[TMSTOR] Received packet type: {pkt_type}");
+                }
+            }
             // Frame now contains an entire packet
             let now = Utc::now();
             // Packet: 8 bytes of seconds since UNIX epoch, 4 bytes of nanoseconds remainder, actual TM data frame

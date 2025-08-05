@@ -28,8 +28,12 @@ pub async fn udp_listener_unicast(
     sink: Sender<Arc<Vec<u8>>>,
     running: Arc<AtomicBool>,
 ) {
+    let mut datarate = DataRateCounter::default();
     while running.load(Ordering::Relaxed) {
         log::trace!("[UDPU] Listening for UDP packets from {address}");
+        if let Ok((_, rate, unit)) = datarate.reset() {
+            log::info!("[UDPU] Receving data rate: {rate:.3} {unit}");
+        }
         let socket = match UdpSocket::bind(("0.0.0.0", address.port())).await {
             Ok(sock) => sock,
             Err(e) => {
@@ -45,7 +49,7 @@ pub async fn udp_listener_unicast(
         };
 
         // Receive data
-        if udp_receive_data("UDPU", &socket, &sink, running.clone())
+        if udp_receive_data("UDPU", &socket, &sink, running.clone(), &mut datarate)
             .await
             .is_err()
         {
@@ -77,8 +81,11 @@ pub async fn udp_listener_multicast(
     running: Arc<AtomicBool>,
 ) {
     let iface = interface.ip();
-
+    let mut datarate = DataRateCounter::default();
     while running.load(Ordering::Relaxed) {
+        if let Ok((_, rate, unit)) = datarate.reset() {
+            log::info!("[UDPM] Receving data rate: {rate:.3} {unit}");
+        }
         log::trace!("[UDPM] Listening for UDP packets from {address} on interface {interface}",);
         let socket = match UdpSocket::bind(("0.0.0.0", address.port())).await {
             Ok(sock) => sock,
@@ -119,7 +126,7 @@ pub async fn udp_listener_multicast(
         };
 
         // Receive data
-        if udp_receive_data("UDPM", &socket, &sink, running.clone())
+        if udp_receive_data("UDPM", &socket, &sink, running.clone(), &mut datarate)
             .await
             .is_err()
         {
@@ -134,10 +141,10 @@ async fn udp_receive_data(
     socket: &UdpSocket,
     sink: &Sender<Arc<Vec<u8>>>,
     running: Arc<AtomicBool>,
+    datarate: &mut DataRateCounter,
 ) -> Result<(), ()> {
     // Receive data
     let mut buf = Vec::with_capacity(65536); // 64KB buffer
-    let mut datarate = DataRateCounter::default();
     'receive: while running.load(Ordering::Relaxed) {
         let start = match datarate.reset() {
             Ok((start, rate, unit)) => {
@@ -178,11 +185,6 @@ async fn udp_receive_data(
                                 let pkt_type = u16::from_le_bytes([data[6], data[7]]);
                                 log::info!(
                                     "[{kind}] Buffer size {} bytes: presync: {presync:#010x}, version: {version}, pkt_type: {pkt_type}",
-                                    buf.len()
-                                );
-                            } else {
-                                log::warn!(
-                                    "[{kind}] Buffer too small to extract presync data: {} bytes",
                                     buf.len()
                                 );
                             }

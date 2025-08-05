@@ -179,7 +179,8 @@ async fn udp_receive_data(
                                 let version = u16::from_le_bytes([data[4], data[5]]);
                                 let pkt_type = u16::from_le_bytes([data[6], data[7]]);
                                 log::info!(
-                                    "[{kind}] Received data {size} bytes: presync: {presync:#010x}, version: {version}, pkt_type: {pkt_type}"
+                                    "[{kind}] Buffer size {} bytes: presync: {presync:#010x}, version: {version}, pkt_type: {pkt_type}",
+                                    buf.len()
                                 );
                             } else {
                                 log::warn!(

@@ -165,6 +165,7 @@ async fn udp_receive_data(
                                 }
                             }
                             buf.clear();
+                            continue 'receive;
                         }
                         if let Some(pos) = buf
                             .windows(4)

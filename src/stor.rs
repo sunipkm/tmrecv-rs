@@ -70,7 +70,7 @@ async fn store_task(
             if frame.len() > 8 {
                 if let Ok(pkt_type_bytes) = frame[4..6].try_into() {
                     let pkt_type = u16::from_le_bytes(pkt_type_bytes);
-                    log::trace!("[TMSTOR] Received packet type: {pkt_type}");
+                    log::trace!("[TMSTOR] Received packet type: {pkt_type}, size: {}", frame.len());
                 }
             }
             // Frame now contains an entire packet

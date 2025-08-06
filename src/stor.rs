@@ -50,10 +50,13 @@ async fn store_task(
         match state.push(&data) {
             Ok(packets) => {
                 for packet in packets {
-                    if packet.len() > 8 {
-                        let version = u16::from_le_bytes(packet[4..6].try_into().unwrap());
-                        let pkt_type = u16::from_le_bytes(packet[6..8].try_into().unwrap());
-                        log::debug!("[TMSTOR] Storing packet: version {version}, type {pkt_type}, length {}", packet.len());
+                    if packet.len() > 4 {
+                        let version = u16::from_le_bytes(packet[0..2].try_into().unwrap());
+                        let pkt_type = u16::from_le_bytes(packet[2..4].try_into().unwrap());
+                        log::debug!(
+                            "[TMSTOR] Storing packet: version {version}, type {pkt_type}, length {}",
+                            packet.len()
+                        );
                     }
                     if let Err(e) = stor.store(Utc::now(), &packet) {
                         log::error!("[TMSTOR] Failed to store packet: {e}");
@@ -61,9 +64,9 @@ async fn store_task(
                 }
             }
             Err(malformed) => {
-                let msg = if malformed.len() > 8 {
-                    let version = u16::from_le_bytes(malformed[4..6].try_into().unwrap());
-                    let pkt_type = u16::from_le_bytes(malformed[6..8].try_into().unwrap());
+                let msg = if malformed.len() > 4 {
+                    let version = u16::from_le_bytes(malformed[0..2].try_into().unwrap());
+                    let pkt_type = u16::from_le_bytes(malformed[2..4].try_into().unwrap());
                     format!(
                         "Length: {}, Version: {version}, Type: {pkt_type}",
                         malformed.len()

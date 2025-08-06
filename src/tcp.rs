@@ -49,9 +49,7 @@ async fn handle_client_tcp(
                     break;
                 }
                 if let Ok((_, rate, unit)) = datarate.reset() {
-                    log::info!(
-                        "[TCP] {addr}> Sending data rate: {rate:.3} {unit}"
-                    );
+                    log::info!("[TCP] {addr}> Sending data rate: {rate:.3} {unit}");
                 }
                 datarate.update(data.len());
             }

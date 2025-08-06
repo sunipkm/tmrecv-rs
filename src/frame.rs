@@ -37,7 +37,7 @@ impl PiccFrame {
                         .position(|window| window == PICC_TLM_PRESYNC)
                     {
                         self.state = PiccFrameState::Presync;
-                        self.frame.drain(..pos);
+                        self.frame.drain(..pos + PICC_TLM_PRESYNC.len());
                     } else {
                         break;
                     }
@@ -45,18 +45,13 @@ impl PiccFrame {
                 PiccFrameState::Presync => {
                     let res = {
                         let mut out = None;
-                        for (pos, window) in
-                            self.frame[PICC_TLM_PRESYNC.len()..] // Safety: We know the frame has at least 4 bytes of pre-sync symbol
-                                .windows(PICC_TLM_POSTSYNC.len())
-                                .enumerate()
+                        for (pos, window) in self.frame.windows(PICC_TLM_POSTSYNC.len()).enumerate()
                         {
                             if window == PICC_TLM_POSTSYNC {
-                                out = Some(Ok(pos
-                                    + PICC_TLM_PRESYNC.len()
-                                    + PICC_TLM_POSTSYNC.len()));
+                                out = Some(Ok(pos));
                                 self.state = PiccFrameState::Empty;
                             } else if window == PICC_TLM_PRESYNC {
-                                out = Some(Err(pos + PICC_TLM_PRESYNC.len()));
+                                out = Some(Err(pos));
                             }
                         }
                         out

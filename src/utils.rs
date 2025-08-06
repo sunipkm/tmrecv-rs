@@ -22,7 +22,7 @@ impl DataRateCounter {
     pub fn reset(&mut self) -> Result<(Instant, f32, &'static str), Instant> {
         let now = Instant::now();
         let dur = now.duration_since(self.start).as_secs_f32();
-        if dur > 1.0 {
+        if dur > 1.0 && self.count > 0 {
             let mut drate = (self.count * 8) as f32 / dur;
             self.count = 0;
             self.start = now;

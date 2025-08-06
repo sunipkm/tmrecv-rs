@@ -15,15 +15,14 @@ use tokio::{
     time::timeout,
 };
 
-const PICC_TLM_PRESYNC: [u8; 4] = 0xBAADDAAD_u32.to_le_bytes();
-const PICC_TLM_POSTSYNC: [u8; 4] = 0xDEADBEEF_u32.to_le_bytes();
+use crate::frame::PiccFrame;
 
 pub fn create_store(
     path: PathBuf,
     running: Arc<AtomicBool>,
     source: Receiver<Arc<Vec<u8>>>,
 ) -> Result<JoinHandle<()>, std::io::Error> {
-    let stor = UtcHourly::<Binary>::new(path, false, "PICTURE-D TMRECV")?;
+    let stor = UtcHourly::<Binary>::new(path, true, "PICTURE-D TMRECV")?;
     Ok(tokio::spawn(store_task(running, source, stor)))
 }
 
@@ -32,7 +31,7 @@ async fn store_task(
     mut source: Receiver<Arc<Vec<u8>>>,
     mut stor: UtcHourly<Binary>,
 ) {
-    let mut frame = Vec::with_capacity(65536); // 64KB buffer
+    let mut state = PiccFrame::default();
     while running.load(Ordering::SeqCst) {
         let data = match timeout(Duration::from_millis(100), source.recv()).await {
             Ok(Ok(data)) => data,
@@ -48,43 +47,32 @@ async fn store_task(
             Err(_) => continue,
         };
         log::trace!("[TMSTOR] Received {} bytes", data.len());
-        if data.len() < 4 {
-            frame.extend_from_slice(&data);
-            continue;
-        }
-        // Find presync word
-        if let Some(loc) = data
-            .windows(PICC_TLM_PRESYNC.len())
-            .position(|data| data == PICC_TLM_PRESYNC)
-        {
-            frame.extend_from_slice(&data[loc..]);
-        } else {
-            frame.extend_from_slice(&data[data.len() - 4..]); // Safety: We checked the length to be >= 4.
-        }
-        // Find postsync word
-        if let Some(loc) = frame
-            .windows(PICC_TLM_POSTSYNC.len())
-            .position(|data| data == PICC_TLM_POSTSYNC)
-        {
-            let remaining = frame.split_off(loc);
-            // Now we have a complete frame
-            if frame.len() > 8 {
-                if let Ok(pkt_type_bytes) = frame[4..6].try_into() {
-                    let pkt_type = u16::from_le_bytes(pkt_type_bytes);
-                    log::debug!("[TMSTOR] Received packet type: {pkt_type}, size: {}", frame.len());
+        match state.push(&data) {
+            Ok(packets) => {
+                for packet in packets {
+                    if packet.len() > 4 {
+                        let version = u16::from_le_bytes(packet[0..2].try_into().unwrap());
+                        let pkt_type = u16::from_le_bytes(packet[2..4].try_into().unwrap());
+                        log::debug!("[TMSTOR] Storing packet: version {version}, type {pkt_type}, length {}", packet.len());
+                    }
+                    if let Err(e) = stor.store(Utc::now(), &packet) {
+                        log::error!("[TMSTOR] Failed to store packet: {e}");
+                    }
                 }
             }
-            // Frame now contains an entire packet
-            let now = Utc::now();
-            // Packet: 8 bytes of seconds since UNIX epoch, 4 bytes of nanoseconds remainder, actual TM data frame
-            let mut packet = Vec::with_capacity(frame.len() + 12);
-            packet.extend_from_slice(&now.timestamp().to_le_bytes());
-            packet.extend_from_slice(&now.timestamp_subsec_nanos().to_le_bytes());
-            packet.extend_from_slice(&frame);
-            if let Err(e) = stor.store(now, &packet) {
-                log::error!("[TMSTOR] Failed to write packet to file: {e:?}")
+            Err(malformed) => {
+                let msg = if malformed.len() > 4 {
+                    let version = u16::from_le_bytes(malformed[0..2].try_into().unwrap());
+                    let pkt_type = u16::from_le_bytes(malformed[2..4].try_into().unwrap());
+                    format!(
+                        "Length: {}, Version: {version}, Type: {pkt_type}",
+                        malformed.len()
+                    )
+                } else {
+                    format!("Length: {}", malformed.len())
+                };
+                log::warn!("[TMSTOR] {msg}");
             }
-            frame = remaining;
         }
     }
 }

@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 
+mod frame;
 mod stor;
 mod tcp;
 mod udp;

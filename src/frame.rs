@@ -55,10 +55,8 @@ impl PiccFrame {
                                     + PICC_TLM_PRESYNC.len()
                                     + PICC_TLM_POSTSYNC.len()));
                                 self.state = PiccFrameState::Empty;
-                                break;
                             } else if window == PICC_TLM_PRESYNC {
                                 out = Some(Err(pos + PICC_TLM_PRESYNC.len()));
-                                break;
                             }
                         }
                         out
@@ -66,7 +64,7 @@ impl PiccFrame {
                     if let Some(res) = res {
                         match res {
                             Ok(end) => {
-                                let packet = self.frame.drain(..end).collect::<Vec<u8>>();
+                                let packet = self.frame.drain(..end).collect();
                                 output.push(packet);
                             }
                             Err(end) => {

@@ -28,9 +28,11 @@ cargo run --release -- --help
 `cargo` accepts program arguments after the `--` (e.g. `cargo run --release -- --help`, where `--help` is passed to the compiled program).
 
 #### Available Options
-- `tcp_port`: Network port to host the TCP server. _Defaults to `14443`_.
-- `evtm_addr`: EVTM address to connect to. _Defaults to `224.255.0.1`_.
-- `multicast_interface`: Provide the multicast interface address to receive multicast data. If this argument is not provided, the relay will expect UDP packets in **unicast** mode from `evtm_addr`. _Defaults to `mcastaddr`, which must be defined in the `/etc/hosts` file to point to the correct network interface_.
+- `-t`, `--tcp-port`: Network port to host the TCP server. _Defaults to `14443`_.
+- `-e`, `--evtm-addr`: EVTM address to connect to. _Defaults to `224.255.0.1`_.
+- `-p`, `--evtm-port`: EVTM port to connect to. _Defaults to `20000`_.
+- `-m`, `--multicast-interface`: Provide the multicast interface address to receive multicast data. If this argument is not provided, the relay will expect UDP packets in **unicast** mode from `evtm_addr`. _Defaults to `mcastaddr`, which must be defined in the `/etc/hosts` file to point to the correct network interface_.
+- `-h`, `--help`: Print the help message.
 
 ## Notes
 - `tmrecv-rs` only supports connecting to IPv4 UDP sockets.
